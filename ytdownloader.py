@@ -29,6 +29,7 @@ def run_download_audio(stream):
 
 def convert_to_mp3(title):
     AudioSegment.from_file(f"{os.getenv('USERPROFILE')}\\Downloads\\{title}.webm").export(f"{os.getenv('USERPROFILE')}\\Downloads\\{title}.mp3", format="mp3")
+    os.remove(f"{os.getenv('USERPROFILE')}\\Downloads\\{title}.webm")
     print("Finished downloading to your 'Downloads' folder.")
     input('Press Enter to exit')
     exit()
