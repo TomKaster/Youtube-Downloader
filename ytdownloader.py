@@ -1,44 +1,117 @@
+"""Simple YouTube video/audio downloader.
+
+Uses yt-dlp (the maintained successor to youtube-dl). The original version used
+pytube, which stopped working after YouTube changed how it serves videos.
+"""
+
 import os
-from pydub import AudioSegment
-from pytube.cli import on_progress
-from pytube import YouTube
+import shutil
+import sys
+from pathlib import Path
 
-def get_stream_highest_resolution():
-    stream = YouTube(f'{url}', on_progress_callback=on_progress).streams.get_highest_resolution()
-    run_download(stream)
+import yt_dlp
+from yt_dlp.utils import DownloadError
 
-def get_stream_itag(itag):
-    stream = YouTube(f'{url}', on_progress_callback=on_progress).streams.get_by_itag(f'{itag}')
-    run_download_audio(stream)
+DOWNLOAD_DIR = Path.home() / "Downloads"
 
-def run_download(stream):
-    print('Connecting...')
-    title = stream.title
-    print(title)
-    stream.download(output_path = f"{os.getenv('USERPROFILE')}\\Downloads")
+
+def app_dir() -> Path:
+    """Folder the program lives in (next to the .exe when packaged with PyInstaller)."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).parent
+    return Path(__file__).resolve().parent
+
+
+def use_bundled_tools():
+    """Put bundled deno/ffmpeg ahead of anything on the system PATH.
+
+    When built with build.ps1, deno.exe and ffmpeg.exe are packed inside the
+    .exe and unpacked to a temp folder (sys._MEIPASS) at launch. yt-dlp finds
+    both automatically once that folder is on PATH. Copies placed next to the
+    program are also picked up.
+    """
+    dirs = []
+    if hasattr(sys, "_MEIPASS"):
+        dirs.append(sys._MEIPASS)
+    dirs.append(str(app_dir()))
+    os.environ["PATH"] = os.pathsep.join(dirs + [os.environ.get("PATH", "")])
+
+
+def find_ffmpeg():
+    """Return the folder containing ffmpeg (bundled or installed), or None."""
+    found = shutil.which("ffmpeg")
+    return str(Path(found).parent) if found else None
+
+
+def pause_and_exit(code: int = 0):
+    # Keeps the console window open when the .exe is double-clicked.
+    input("Press Enter to exit")
+    sys.exit(code)
+
+
+def ask(prompt: str, choices) -> str:
+    while True:
+        answer = input(prompt).strip().lower()
+        if answer in choices:
+            return answer
+        print(f"Please type one of: {', '.join(choices)}")
+
+
+def build_options(mode: str, ffmpeg_dir):
+    opts = {
+        "outtmpl": str(DOWNLOAD_DIR / "%(title)s.%(ext)s"),
+        "noplaylist": True,          # a URL with &list=... downloads just that video
+        "windowsfilenames": True,    # strip characters Windows doesn't allow
+    }
+    if ffmpeg_dir:
+        opts["ffmpeg_location"] = ffmpeg_dir
+
+    if mode == "video":
+        if ffmpeg_dir:
+            # Best quality: separate video + audio streams merged into one .mp4
+            opts["format"] = "bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b"
+            opts["merge_output_format"] = "mp4"
+        else:
+            # No ffmpeg: fall back to a single pre-merged file (usually lower resolution)
+            print("Note: ffmpeg not found, so video quality may be limited.")
+            opts["format"] = "b[ext=mp4]/b"
+    else:  # audio
+        opts["format"] = "bestaudio/best"
+        opts["postprocessors"] = [{
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "mp3",
+            "preferredquality": "192",
+        }]
+    return opts
+
+
+def main():
+    use_bundled_tools()
+    mode = ask("Do you want to download video or audio? Type 'video' or 'audio': ",
+               ("video", "audio"))
+    noun = "video" if mode == "video" else "video whose audio"
+    url = input(f"Enter the URL for the YouTube {noun} you want to download: ").strip()
+
+    ffmpeg_dir = find_ffmpeg()
+    if mode == "audio" and not ffmpeg_dir:
+        print("ffmpeg is required to convert audio to mp3, but it wasn't found.")
+        print("Put ffmpeg.exe next to this program or install it and add it to PATH.")
+        pause_and_exit(1)
+
+    DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    print("Connecting...")
+    try:
+        with yt_dlp.YoutubeDL(build_options(mode, ffmpeg_dir)) as ydl:
+            ydl.download([url])
+    except DownloadError as e:
+        print(f"\nDownload failed: {e}")
+        print("If this keeps happening, YouTube may have changed something: "
+              "update yt-dlp and make sure Deno is installed (see README).")
+        pause_and_exit(1)
+
     print("Finished downloading to your 'Downloads' folder.")
-    input('Press Enter to exit')
-    exit()
+    pause_and_exit(0)
 
-def run_download_audio(stream):
-    print('Connecting...')
-    title = stream.title
-    print(title)
-    stream.download(output_path = f"{os.getenv('USERPROFILE')}\\Downloads", filename = (f'{title}.webm'))
-    convert_to_mp3(title)
 
-def convert_to_mp3(title):
-    AudioSegment.from_file(f"{os.getenv('USERPROFILE')}\\Downloads\\{title}.webm").export(f"{os.getenv('USERPROFILE')}\\Downloads\\{title}.mp3", format="mp3")
-    os.remove(f"{os.getenv('USERPROFILE')}\\Downloads\\{title}.webm")
-    print("Finished downloading to your 'Downloads' folder.")
-    input('Press Enter to exit')
-    exit()
-
-answer = input("Do you want to download video or audio? Type 'video' or 'audio': ")
-if answer == 'video':
-    url = input('Enter the URL for the Youtube video you want to download: ')
-    get_stream_highest_resolution()
-
-elif answer == 'audio':
-    url = input('Enter the URL for the Youtube video whose audio you want to download: ')
-    get_stream_itag(251)
+if __name__ == "__main__":
+    main()
