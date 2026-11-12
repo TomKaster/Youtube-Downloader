@@ -5,7 +5,7 @@ The downloader asks whether you want video or just audio. Video is saved as **mp
 
 > The original version used `pytube`, which stopped working after YouTube changes. It now uses [yt-dlp](https://github.com/yt-dlp/yt-dlp), which is actively maintained. `pydub` and `libav` are no longer needed.
 
-## Requirements
+## Requirements (only for running from source — see below for the standalone .exe)
 
 1. **Python packages**
    ```
@@ -26,19 +26,24 @@ The downloader asks whether you want video or just audio. Video is saved as **mp
 py ytdownloader.py
 ```
 
-## Build the .exe
+## Build the standalone .exe
 
 ```
-py -m PyInstaller --onefile --collect-data yt_dlp_ejs ytdownloader.py
+powershell -ExecutionPolicy Bypass -File build.ps1
 ```
 
-The executable is written to `dist\ytdownloader.exe`. Copy `ffmpeg.exe` next to it if ffmpeg isn't on PATH. Deno still needs to be installed on the machine that runs it.
+This downloads Deno and ffmpeg into `bin\` (first time only), installs the Python packages, and builds `dist\ytdownloader.exe` with Deno and ffmpeg packed inside. **Users only need that one file** — no Python, Deno or ffmpeg install.
+
+Notes:
+- The .exe is large (roughly 100–150 MB) because it carries Deno and ffmpeg, and it takes a few seconds to start while it unpacks them.
+- ffmpeg is GPL-licensed; if you distribute the .exe publicly, include a note that it bundles ffmpeg and link to its source (https://ffmpeg.org). Deno is MIT-licensed.
 
 ## If it stops working again
 
-YouTube changes frequently. Usually the fix is just updating yt-dlp and rebuilding:
+YouTube changes frequently. Usually the fix is just rebuilding, which pulls the latest yt-dlp:
 
 ```
-py -m pip install -U "yt-dlp[default]"
-py -m PyInstaller --onefile --collect-data yt_dlp_ejs ytdownloader.py
+powershell -ExecutionPolicy Bypass -File build.ps1
 ```
+
+(Delete `bin\` first if you also want fresh copies of Deno and ffmpeg.)

@@ -22,15 +22,23 @@ def app_dir() -> Path:
     return Path(__file__).resolve().parent
 
 
-def find_ffmpeg():
-    """Return a folder containing ffmpeg, or None.
+def use_bundled_tools():
+    """Put bundled deno/ffmpeg ahead of anything on the system PATH.
 
-    Looks next to the program first (so ffmpeg.exe can ship alongside the .exe),
-    then on the system PATH.
+    When built with build.ps1, deno.exe and ffmpeg.exe are packed inside the
+    .exe and unpacked to a temp folder (sys._MEIPASS) at launch. yt-dlp finds
+    both automatically once that folder is on PATH. Copies placed next to the
+    program are also picked up.
     """
-    exe = "ffmpeg.exe" if os.name == "nt" else "ffmpeg"
-    if (app_dir() / exe).exists():
-        return str(app_dir())
+    dirs = []
+    if hasattr(sys, "_MEIPASS"):
+        dirs.append(sys._MEIPASS)
+    dirs.append(str(app_dir()))
+    os.environ["PATH"] = os.pathsep.join(dirs + [os.environ.get("PATH", "")])
+
+
+def find_ffmpeg():
+    """Return the folder containing ffmpeg (bundled or installed), or None."""
     found = shutil.which("ffmpeg")
     return str(Path(found).parent) if found else None
 
@@ -78,6 +86,7 @@ def build_options(mode: str, ffmpeg_dir):
 
 
 def main():
+    use_bundled_tools()
     mode = ask("Do you want to download video or audio? Type 'video' or 'audio': ",
                ("video", "audio"))
     noun = "video" if mode == "video" else "video whose audio"
